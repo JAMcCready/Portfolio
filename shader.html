@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>Assignment 4 - Julian McCready</title>
 
-    <!-- WebGL utilities -->
+    <!-- WebGL utilities - Ensure these files are in the same folder on GitHub -->
     <script src="initShaders.js"></script>
     <script src="MV.js"></script>
     <script src="app.js"></script>
@@ -20,13 +20,11 @@
         out vec3 fNormal;
         out vec3 fPosition;
 
-        // Rotation, model-view, and projection transformations
         uniform mat4 modelViewMatrix;
         uniform mat4 projectionMatrix;
         uniform mat4 rotationMatrix;
         uniform mat3 normalMatrix;
 
-        // material light products
         uniform vec4 ambientProduct;
         uniform vec4 diffuseProduct;
         uniform vec4 specularProduct;
@@ -34,15 +32,15 @@
         uniform float shininess;
 
         void main() {
-            // apply rotation and camera transformation
+            // Apply rotation and camera transformation
             vec4 pos = modelViewMatrix * rotationMatrix * vPosition;
             gl_Position = projectionMatrix * pos;
 
-            // transform and pass the normal and position
+            // Transform and pass the normal and position
             fNormal = normalMatrix * vNormal;
             fPosition = pos.xyz;
 
-            // goraud shading
+            // Gouraud shading (per-vertex lighting)
             vec3 N = normalize(fNormal);
             vec3 L = normalize(lightPosition.xyz - pos.xyz);
             vec3 E = normalize(-pos.xyz);
@@ -54,12 +52,10 @@
             float Ks = pow(max(dot(N, H), 0.0), shininess);
             vec4 specular = Ks * specularProduct;
 
-            // disable specular light if light is behind surfact
             if(dot(L, N) < 0.0) {
                 specular = vec4(0.0, 0.0, 0.0, 1.0);
             }
 
-            // final vertex color passed to fragment shader
             fColorGouraud = ambient + diffuse + specular;
             fColorGouraud.a = 1.0;
         }
@@ -70,23 +66,21 @@
         #version 300 es
         precision highp float;
 
-        in vec4 fColorGouraud; // Interpolated color for goraud shading
-        in vec3 fNormal; // Interpolated normal
-        in vec3 fPosition; // Interpolated position
+        in vec4 fColorGouraud; 
+        in vec3 fNormal; 
+        in vec3 fPosition; 
         out vec4 fragColor;
 
-        // material light products
         uniform vec4 ambientProduct;
         uniform vec4 diffuseProduct;
         uniform vec4 specularProduct;
         uniform vec4 lightPosition;
         uniform float shininess;
-        
-        uniform bool usePhong; // Used to toggle between gouraud and phong
+        uniform bool usePhong;
 
         void main() {
             if (usePhong) {
-                // Phong shading
+                // Phong shading (per-pixel lighting)
                 vec3 N = normalize(fNormal);
                 vec3 L = normalize(lightPosition.xyz - fPosition);
                 vec3 E = normalize(-fPosition);
@@ -113,21 +107,28 @@
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #fdfdfd; margin: 20px; }
         canvas { border: 1px solid #444; background: white; box-shadow: 0px 5px 15px rgba(0,0,0,0.3); }
-        .controls { margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 8px; border: 1px solid #ddd; display: flex; gap: 20px; align-items: flex-end; }
+        .controls { margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 8px; border: 1px solid #ddd; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; justify-content: center; }
         .control-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         button { padding: 8px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #aaa; background: #eee; font-weight: bold; font-size: 12px; }
         button:hover { background: #ddd; }
         select { padding: 5px; border-radius: 4px; border: 1px solid #aaa; }
         .active-mode { color: #8a4b08; font-weight: bold; font-size: 13px; margin-bottom: 8px; }
+        #loadingMsg { color: #007bff; font-weight: bold; display: none; font-size: 12px; }
     </style>
 </head>
 <body>
-    <!-- UI controls for file loading, shading, rotation, and material selection -->
     <h2>Assignment 4 - Julian McCready</h2>
+    
     <div class="controls">
         <div class="control-item">
-            <label style="font-size: 11px; font-weight: bold;">Bunny File</label>
-            <input type="file" id="fileInput" accept=".off">
+            <label style="font-size: 11px; font-weight: bold;">Select Model</label>
+            <select id="modelSelect">
+                <!-- Relative paths for GitHub Pages -->
+                <option value="models/bunny.off">Stanford Bunny</option>
+                <option value="models/teapot.off">Utah Teapot</option>
+                <option value="models/sphere.off">Sphere</option>
+                <option value="models/cube.off">Cube</option>
+            </select>
         </div>
         
         <div class="control-item">
@@ -150,8 +151,12 @@
             </select>
         </div>
 
-        <span id="currentMode" class="active-mode">Current: Gouraud</span>
+        <div class="control-item">
+            <span id="currentMode" class="active-mode">Current: Gouraud</span>
+            <span id="loadingMsg">Loading...</span>
+        </div>
     </div>
+
     <canvas id="gl-canvas" width="600" height="600"></canvas>
 </body>
 </html>
