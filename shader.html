@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Assignment 4 - Julian McCready</title>
+
+    <!-- WebGL utilities -->
+    <script src="initShaders.js"></script>
+    <script src="MV.js"></script>
+    <script src="app.js"></script>
+
+    <!-- vertex shader -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        #version 300 es
+
+        in vec4 vPosition;
+        in vec3 vNormal;
+        
+        out vec4 fColorGouraud;
+        out vec3 fNormal;
+        out vec3 fPosition;
+
+        // Rotation, model-view, and projection transformations
+        uniform mat4 modelViewMatrix;
+        uniform mat4 projectionMatrix;
+        uniform mat4 rotationMatrix;
+        uniform mat3 normalMatrix;
+
+        // material light products
+        uniform vec4 ambientProduct;
+        uniform vec4 diffuseProduct;
+        uniform vec4 specularProduct;
+        uniform vec4 lightPosition;
+        uniform float shininess;
+
+        void main() {
+            // apply rotation and camera transformation
+            vec4 pos = modelViewMatrix * rotationMatrix * vPosition;
+            gl_Position = projectionMatrix * pos;
+
+            // transform and pass the normal and position
+            fNormal = normalMatrix * vNormal;
+            fPosition = pos.xyz;
+
+            // goraud shading
+            vec3 N = normalize(fNormal);
+            vec3 L = normalize(lightPosition.xyz - pos.xyz);
+            vec3 E = normalize(-pos.xyz);
+            vec3 H = normalize(L + E);
+
+            vec4 ambient = ambientProduct;
+            float Kd = max(dot(L, N), 0.0);
+            vec4 diffuse = Kd * diffuseProduct;
+            float Ks = pow(max(dot(N, H), 0.0), shininess);
+            vec4 specular = Ks * specularProduct;
+
+            // disable specular light if light is behind surfact
+            if(dot(L, N) < 0.0) {
+                specular = vec4(0.0, 0.0, 0.0, 1.0);
+            }
+
+            // final vertex color passed to fragment shader
+            fColorGouraud = ambient + diffuse + specular;
+            fColorGouraud.a = 1.0;
+        }
+    </script>
+
+    <!-- Fragment shader -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        #version 300 es
+        precision highp float;
+
+        in vec4 fColorGouraud; // Interpolated color for goraud shading
+        in vec3 fNormal; // Interpolated normal
+        in vec3 fPosition; // Interpolated position
+        out vec4 fragColor;
+
+        // material light products
+        uniform vec4 ambientProduct;
+        uniform vec4 diffuseProduct;
+        uniform vec4 specularProduct;
+        uniform vec4 lightPosition;
+        uniform float shininess;
+        
+        uniform bool usePhong; // Used to toggle between gouraud and phong
+
+        void main() {
+            if (usePhong) {
+                // Phong shading
+                vec3 N = normalize(fNormal);
+                vec3 L = normalize(lightPosition.xyz - fPosition);
+                vec3 E = normalize(-fPosition);
+                vec3 H = normalize(L + E);
+
+                vec4 ambient = ambientProduct;
+                float Kd = max(dot(L, N), 0.0);
+                vec4 diffuse = Kd * diffuseProduct;
+                float Ks = pow(max(dot(N, H), 0.0), shininess);
+                vec4 specular = Ks * specularProduct;
+
+                if(dot(L, N) < 0.0) {
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+                }
+
+                fragColor = ambient + diffuse + specular;
+                fragColor.a = 1.0;
+            } else {
+                fragColor = fColorGouraud;
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #fdfdfd; margin: 20px; }
+        canvas { border: 1px solid #444; background: white; box-shadow: 0px 5px 15px rgba(0,0,0,0.3); }
+        .controls { margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 8px; border: 1px solid #ddd; display: flex; gap: 20px; align-items: flex-end; }
+        .control-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        button { padding: 8px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #aaa; background: #eee; font-weight: bold; font-size: 12px; }
+        button:hover { background: #ddd; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #aaa; }
+        .active-mode { color: #8a4b08; font-weight: bold; font-size: 13px; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <!-- UI controls for file loading, shading, rotation, and material selection -->
+    <h2>Assignment 4 - Julian McCready</h2>
+    <div class="controls">
+        <div class="control-item">
+            <label style="font-size: 11px; font-weight: bold;">Bunny File</label>
+            <input type="file" id="fileInput" accept=".off">
+        </div>
+        
+        <div class="control-item">
+            <button id="toggleShading">Switch to Phong</button>
+            <button id="toggleRotation">Stop Rotation</button>
+        </div>
+
+        <div class="control-item">
+            <label for="speedSlider" style="font-size: 11px; font-weight: bold;">Rotation Speed</label>
+            <input type="range" id="speedSlider" min="0" max="0.1" step="0.005" value="0.01">
+        </div>
+
+        <div class="control-item">
+            <label for="materialSelect" style="font-size: 11px; font-weight: bold;">Material</label>
+            <select id="materialSelect">
+                <option value="copper">Copper</option>
+                <option value="chrome">Chrome</option>
+                <option value="bronze">Polished Bronze</option>
+                <option value="brass">Brass</option>
+            </select>
+        </div>
+
+        <span id="currentMode" class="active-mode">Current: Gouraud</span>
+    </div>
+    <canvas id="gl-canvas" width="600" height="600"></canvas>
+</body>
+</html>
