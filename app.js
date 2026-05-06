@@ -1,17 +1,13 @@
 var gl, canvas, program;
 var points = [], normals = [];
-
 var rotationAngle = 0.0;
-var rotationMatrixLoc, normalMatrixLoc;
+var rotationMatrixLoc, normalMatrixLoc, usePhongLoc;
 
-var isPhong = false; // shading state control
-var isRotating = true; // rotation state control
+var isPhong = false; 
+var isRotating = true; 
 var rotationSpeed = 0.01;
-var usePhongLoc;
-
 var modelViewMatrix;
 
-// Material property definitions
 var materials = {
     copper: {
         ambient: vec4(0.19125, 0.0735, 0.0225, 1.0),
@@ -40,8 +36,6 @@ var materials = {
 };
 
 var currentMaterial = materials.copper;
-
-// Light source definitions
 var lightPosition = vec4(1.0, 1.0, 1.0, 1.0);
 var lightAmbient = vec4(0.2, 0.2, 0.2, 1.0);
 var lightDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
@@ -56,53 +50,57 @@ window.onload = function init() {
     gl.clearColor(0.98, 0.98, 0.98, 1.0);
     gl.enable(gl.DEPTH_TEST);
 
-    // Handle .off file selection
-    document.getElementById("fileInput").onchange = function() {
-        if (this.files.length === 0) return;
-        var reader = new FileReader();
-        reader.onload = function() {
-            parseOFF(reader.result);
-            setupBuffersAndDraw();
-        };
-        reader.readAsText(this.files[0]);
+    // Initial load of the first model in the dropdown
+    loadModelFromServer(document.getElementById("modelSelect").value);
+
+    // Handle dropdown selection
+    document.getElementById("modelSelect").onchange = function() {
+        loadModelFromServer(this.value);
     };
 
-    // Toggle between Phong and Gouraud shading
     document.getElementById("toggleShading").onclick = function() {
         isPhong = !isPhong;
-        if (isPhong) {
-            this.innerHTML = "Switch to Gouraud";
-            document.getElementById("currentMode").innerHTML = "Current: Phong";
-        } else {
-            this.innerHTML = "Switch to Phong";
-            document.getElementById("currentMode").innerHTML = "Current: Gouraud";
-        }
+        this.innerHTML = isPhong ? "Switch to Gouraud" : "Switch to Phong";
+        document.getElementById("currentMode").innerHTML = isPhong ? "Current: Phong" : "Current: Gouraud";
         if (program) gl.uniform1i(usePhongLoc, isPhong);
     };
 
-    // Toggle model rotation animation
     document.getElementById("toggleRotation").onclick = function() {
         isRotating = !isRotating;
-        if (isRotating) {
-            this.innerHTML = "Stop Rotation";
-        } else {
-            this.innerHTML = "Start Rotation";
-        }
+        this.innerHTML = isRotating ? "Stop Rotation" : "Start Rotation";
     };
 
-    // Update rotation speed from slider input
     document.getElementById("speedSlider").oninput = function() {
         rotationSpeed = parseFloat(this.value);
     };
 
-    // Switch material properties at runtime
     document.getElementById("materialSelect").onchange = function() {
         currentMaterial = materials[this.value];
         if (program) updateMaterialUniforms();
     };
 };
 
-// Calculate and send material-light products to GPU
+function loadModelFromServer(url) {
+    if (!url) return;
+    document.getElementById("loadingMsg").style.display = "inline";
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error("Could not find " + url);
+            return response.text();
+        })
+        .then(content => {
+            parseOFF(content);
+            setupBuffersAndDraw();
+            document.getElementById("loadingMsg").style.display = "none";
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Error loading model. Check console.");
+            document.getElementById("loadingMsg").style.display = "none";
+        });
+}
+
 function updateMaterialUniforms() {
     var ambientProduct = mult(lightAmbient, currentMaterial.ambient);
     var diffuseProduct = mult(lightDiffuse, currentMaterial.diffuse);
@@ -114,7 +112,6 @@ function updateMaterialUniforms() {
     gl.uniform1f(gl.getUniformLocation(program, "shininess"), currentMaterial.shininess);
 }
 
-// Extract geometry and calculate vertex normals from OFF file data
 function parseOFF(content) {
     var lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
     if (lines[0] !== "OFF") return;
@@ -154,12 +151,10 @@ function parseOFF(content) {
     }
 }
 
-// Initialize shaders, buffers, and static uniforms
 function setupBuffersAndDraw() {
     program = initShaders(gl, "vertex-shader", "fragment-shader");
     gl.useProgram(program);
 
-    // Normalize model scale and position
     var min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     points.forEach(p => { for(var i=0; i<3; i++) { if(p[i] < min[i]) min[i] = p[i]; if(p[i] > max[i]) max[i] = p[i]; } });
     var center = vec3((min[0]+max[0])/2, (min[1]+max[1])/2, (min[2]+max[2])/2);
@@ -168,14 +163,12 @@ function setupBuffersAndDraw() {
     var projectionMatrix = ortho(-maxDim*0.7, maxDim*0.7, -maxDim*0.7, maxDim*0.7, -maxDim*10, maxDim*10);
     modelViewMatrix = lookAt(vec3(center[0], center[1], center[2] + maxDim), center, vec3(0,1,0));
 
-    // Send vertex positions to attribute once on load
     var vBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, flatten(points), gl.STATIC_DRAW);
     gl.vertexAttribPointer(gl.getAttribLocation(program, "vPosition"), 4, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, "vPosition"));
 
-    // Send vertex normals to attribute once on load
     var nBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW);
@@ -184,7 +177,6 @@ function setupBuffersAndDraw() {
 
     updateMaterialUniforms();
     
-    // Set static uniforms
     gl.uniform4fv(gl.getUniformLocation(program, "lightPosition"), flatten(lightPosition));
     usePhongLoc = gl.getUniformLocation(program, "usePhong");
     gl.uniform1i(usePhongLoc, isPhong);
@@ -195,26 +187,26 @@ function setupBuffersAndDraw() {
     rotationMatrixLoc = gl.getUniformLocation(program, "rotationMatrix");
     normalMatrixLoc = gl.getUniformLocation(program, "normalMatrix");
 
-    render();
+    if (!window.requestAnimationFrameId) {
+        render();
+    }
 }
 
-// Animation loop to update dynamic uniforms and redraw
 function render() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
-    if (isRotating) {
-        rotationAngle += rotationSpeed;
-    }
+    if (isRotating) rotationAngle += rotationSpeed;
     
-    // Update rotation matrix uniform every frame
     var rMatrix = rotateY(rotationAngle * 180 / Math.PI);
     gl.uniformMatrix4fv(rotationMatrixLoc, false, flatten(rMatrix));
 
-    // Calculate and send normal matrix (inverse-transpose) every frame
     var mvp = mult(modelViewMatrix, rMatrix);
     var nMatrix = normalMatrix(mvp, true);
     gl.uniformMatrix3fv(normalMatrixLoc, false, flatten(nMatrix));
 
-    gl.drawArrays(gl.TRIANGLES, 0, points.length);
-    requestAnimationFrame(render);
+    if (points.length > 0) {
+        gl.drawArrays(gl.TRIANGLES, 0, points.length);
+    }
+    
+    window.requestAnimationFrameId = requestAnimationFrame(render);
 }
